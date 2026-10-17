@@ -369,8 +369,9 @@
   function kick() { if (!running) { running = true; requestAnimationFrame(tick); } }
   window.addEventListener('scroll', kick, { passive: true });
 
-  let rt;
+  let rt, pendingLayout = false;
   window.addEventListener('resize', () => {
+    if (document.documentElement.classList.contains('modal-open')) { pendingLayout = true; return; }
     clearTimeout(rt);
     rt = setTimeout(() => {
       // keep the same relative progress across resizes
@@ -503,6 +504,106 @@
     b.addEventListener('click', () => showCard(i));
     b.addEventListener('mouseenter', () => showCard(i));
     b.addEventListener('focus', () => showCard(i));
+  });
+
+  /* ---------- order form (pop-up) ----------
+     Orders are emailed through Web3Forms (free).  To connect it:
+       1. Go to https://web3forms.com, type the email that should receive orders,
+          and they email you an "Access Key".
+       2. Paste that key below between the quotes.                              */
+  const WEB3FORMS_ACCESS_KEY = 'f69ca069-ead1-478b-af9b-589323add10c';
+  const INSTAGRAM_URL = 'https://www.instagram.com/twilight.crochets/';
+
+  const dlg = $('#orderDialog'), form = $('#orderForm');
+  const sel = $('#orderProduct'), thumb = $('#orderThumb'), priceEl = $('#orderPrice');
+  const statusEl = $('#orderStatus'), submitBtn = $('#orderSubmit'), doneEl = $('#orderDone');
+
+  // product info (photo + base price) read straight from the product cards
+  const productInfo = {};
+  $$('#products .product').forEach(card => {
+    const name = $('.prod-name', card).textContent.trim();
+    const img = $('.product-img img', card);
+    productInfo[name] = { img: img ? img.getAttribute('src') : '', price: $('.price', card).textContent.trim() };
+  });
+  function showProduct(name) {
+    const info = productInfo[name];
+    thumb.style.backgroundImage = info && info.img ? `url("${info.img}")` : '';
+    thumb.classList.toggle('custom', !info || !info.img);
+    priceEl.textContent = info ? `Base price: ${info.price}` : 'Price depends on the design';
+  }
+  sel.addEventListener('change', () => showProduct(sel.value));
+
+  function openOrder(product) {
+    if (product && [...sel.options].some(o => o.value === product)) sel.value = product;
+    showProduct(sel.value);
+    statusEl.textContent = ''; statusEl.className = 'order-status';
+    doneEl.hidden = true; form.classList.remove('is-done');
+    document.documentElement.classList.add('modal-open');
+    dlg.showModal();
+    setTimeout(() => (product ? form.elements.Name : sel).focus({ preventScroll: true }), 50);
+  }
+  function closeOrder() { dlg.close(); }
+  dlg.addEventListener('close', () => {
+    document.documentElement.classList.remove('modal-open');
+    if (pendingLayout) { pendingLayout = false; window.dispatchEvent(new Event('resize')); }
+  });
+  dlg.addEventListener('click', e => { if (e.target === dlg) closeOrder(); });   // click on the backdrop
+  $('#orderClose').addEventListener('click', closeOrder);
+  $('#orderDoneClose').addEventListener('click', closeOrder);
+  $$('[data-order]').forEach(b => b.addEventListener('click', e => { e.preventDefault(); openOrder(b.dataset.order); }));
+  // tapping a product photo also opens the form (the button is the visible hint)
+  $$('#products .product').forEach(card => {
+    const btn = $('.order-btn', card); if (!btn) return;
+    $('.product-img', card).addEventListener('click', e => { if (e.target !== btn) openOrder(btn.dataset.order); });
+  });
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const ig = form.elements.Instagram;
+    ig.value = ig.value.trim().replace(/^@?/, '@').replace(/\s+/g, '');
+    if (ig.value === '@') ig.value = '';
+    if (!form.checkValidity()) {
+      form.classList.add('tried');
+      statusEl.textContent = 'Please fill in your name, Instagram username and the details.';
+      statusEl.className = 'order-status error';
+      const bad = form.querySelector(':invalid'); if (bad) bad.focus();
+      return;
+    }
+    if (form.elements.botcheck.checked) return;              // spam bot
+    if (!WEB3FORMS_ACCESS_KEY || WEB3FORMS_ACCESS_KEY.startsWith('PASTE_')) {
+      statusEl.innerHTML = `The order form isn’t connected yet. Please <a href="${INSTAGRAM_URL}" target="_blank" rel="noopener">message us on Instagram</a> for now.`;
+      statusEl.className = 'order-status error';
+      return;
+    }
+    const data = {
+      access_key: WEB3FORMS_ACCESS_KEY,
+      subject: `New order: ${sel.value} — ${form.elements.Name.value.trim()} (${ig.value})`,
+      from_name: 'Twilight Crochets website',
+      'Product': sel.value,
+      'Base price': productInfo[sel.value] ? productInfo[sel.value].price : 'Custom',
+      'Name': form.elements.Name.value.trim(),
+      'Instagram': ig.value,
+      'Instagram link': 'https://www.instagram.com/' + ig.value.slice(1) + '/',
+      'Customisation details': form.elements['Customisation details'].value.trim(),
+      botcheck: false
+    };
+    submitBtn.disabled = true; submitBtn.textContent = 'Sending…';
+    statusEl.textContent = ''; statusEl.className = 'order-status';
+    try {
+      const res = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || out.success === false) throw new Error(out.message || res.status);
+      form.reset(); form.classList.remove('tried');
+      form.classList.add('is-done'); doneEl.hidden = false;
+    } catch (err) {
+      statusEl.innerHTML = `Sorry, something went wrong sending your request. Please try again, or <a href="${INSTAGRAM_URL}" target="_blank" rel="noopener">message us on Instagram</a>.`;
+      statusEl.className = 'order-status error';
+    } finally {
+      submitBtn.disabled = false; submitBtn.textContent = 'Send order request';
+    }
   });
 
   /* ---------- boot ---------- */
