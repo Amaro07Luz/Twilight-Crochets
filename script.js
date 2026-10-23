@@ -512,7 +512,7 @@
           and they email you an "Access Key".
        2. Paste that key below between the quotes.                              */
   const WEB3FORMS_ACCESS_KEY = 'f69ca069-ead1-478b-af9b-589323add10c';
-  const INSTAGRAM_URL = 'https://www.instagram.com/twilight.crochets/';
+  const INSTAGRAM_URL = 'https://www.instagram.com/twilight_crochet.s/';
 
   const dlg = $('#orderDialog'), form = $('#orderForm');
   const sel = $('#orderProduct'), thumb = $('#orderThumb'), priceEl = $('#orderPrice');
